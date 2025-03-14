@@ -1,0 +1,6 @@
+pwd: print working directory (check `man getcwd`).
+echo: print a user input string on stdout (for example: `echo Hello World`).
+cp: create a copy from a given source file to a given destination. For example,
+    cp file.txt /tmp/file_copy.txt
+    This is a simple version of Unix cp program that supports only copying a file to an explicit destination as in the example.
+mv: move a file to another place (might be with different name).
