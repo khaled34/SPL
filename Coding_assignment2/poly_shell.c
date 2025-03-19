@@ -18,7 +18,6 @@
 
 #define FEMTO_SHELL_NUM_SUPPORTED_COMMANDS  2
 #define PICO_SHELL_NUM_SUPPORTED_COMMANDS   4
-#define NANO_SHELL_NUM_SUPPORTED_COMMANDS   5
 
 #define FEMTO_SHELL         0
 #define PICO_SHELL          1
@@ -26,7 +25,7 @@
 
 extern char **environ;
 
-const char* commands_str [] = {"exit", "echo","pwd", "cd", "export"};
+const char* commands_str [] = {"exit", "echo","pwd", "cd"};
 
 char** g_local_env_vars = NULL;
 uint32_t g_local_env_vars_cnt = 0;
@@ -208,22 +207,27 @@ static void child_shell_handler(char **newargv, const uint8_t cmd_indx)
 
 static int check_flavored_shell(char* command)
 {
+#if (shell_flavor <= PICO_SHELL) 
     int end_index_sprtd_cmds = 0;
+#endif // pico and femto 
+
 #if (shell_flavor == FEMTO_SHELL)
     end_index_sprtd_cmds = FEMTO_SHELL_NUM_SUPPORTED_COMMANDS;
 #elif (shell_flavor == PICO_SHELL)
     end_index_sprtd_cmds = PICO_SHELL_NUM_SUPPORTED_COMMANDS;
-#elif (shell_flavor == NANO_SHELL)
-    end_index_sprtd_cmds = NANO_SHELL_NUM_SUPPORTED_COMMANDS;
-#endif /*shell_flavor*/
+#endif
 
-    for (int i = 0; i < end_index_sprtd_cmds; i++)
+#if (shell_flavor <= PICO_SHELL)
+for (int i = 0; i < end_index_sprtd_cmds; i++)
+{
+    if (strcmp(command, commands_str[i]) == 0)
     {
-        if (strcmp(command, commands_str[i]) == 0)
-        {
-            return EXIT_SUCCESS;
-        }
+        return EXIT_SUCCESS;
     }
+}
+#else
+    return EXIT_SUCCESS;
+#endif /*shell_flavor*/
 
     return EXIT_FAILURE;
 }
