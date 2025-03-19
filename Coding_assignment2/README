@@ -1,5 +1,8 @@
 This Assignment contains a base which called poly_shell which implements for now:
-femto / pico shells 
-TODO nano / micro shells
+femto / pico / nano shells 
+TODO micro shell
 
 You can use "make help" command to use the makefile properly which will configure the poly_shell to be handled correctly
+
+TODO:
+Describe the features of all shells seperately
