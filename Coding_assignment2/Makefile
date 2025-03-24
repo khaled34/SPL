@@ -8,8 +8,10 @@ else ifeq ($(FLAVOR),1)
     FLAVOR_NAME = pico
 else ifeq ($(FLAVOR),2)
     FLAVOR_NAME = nano
+else ifeq ($(FLAVOR),3)
+    FLAVOR_NAME = micro
 else
-    $(error Invalid FLAVOR value. Use 0 (femto), 1 (pico), or 2 (nano))
+    $(error Invalid FLAVOR value. Use 0 (femto), 1 (pico), 2 (nano), 3 (micro))
 endif
 
 CFLAGS ?= -g -Wall $(INCLUDES)

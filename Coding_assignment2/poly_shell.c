@@ -6,6 +6,11 @@
 #include <sys/wait.h>
 #include <limits.h>
 #include <stdint.h>
+#include <fcntl.h>
+
+#ifndef shell_flavor 
+#define shell_flavor MICRO_SHELL
+#endif //shell_flavor 
 
 #define RED_TEXT            "\033[1;31m"
 #define GREEN_TEXT          "\033[1;32m"
@@ -22,6 +27,14 @@
 #define FEMTO_SHELL         0
 #define PICO_SHELL          1
 #define NANO_SHELL          2
+#define MICRO_SHELL         3
+
+#if (shell_flavor == MICRO_SHELL)
+#define INPUT_REDIRECTION        "<"
+#define OUTPUT_REDIRECTION       ">"
+#define ERROR_REDIRECTION        "2>"
+#endif //MICRO_SHELL
+
 
 extern char **environ;
 
@@ -30,8 +43,24 @@ const char* commands_str [] = {"exit", "echo","pwd", "cd"};
 char** g_local_env_vars = NULL;
 uint32_t g_local_env_vars_cnt = 0;
 
-static int search_and_get_env_var_index(const char *env_var);
+#if shell_flavor == MICRO_SHELL
+int stdin_backup  = -1;
+int stdout_backup = -1;
+int stderr_backup = -1;
+#endif // MICRO SHELL
 
+#if shell_flavor >= NANO_SHELL
+static int search_and_get_env_var_index(const char *env_var);
+#endif // NANO shell or advance
+
+static void clean_local_argv(char** local_argv)
+{
+    for (int i = 0; local_argv[i] != NULL; i++) 
+    {
+        free(local_argv[i]);
+    }
+    free(local_argv);
+}
 
 static void print_prompt()
 {
@@ -172,6 +201,80 @@ func_error:
         return argv; // Return the properly constructed array
     }
 }
+#if (shell_flavor == MICRO_SHELL)
+int redirection_handler(char** local_argv)
+{
+    int fd = -1;
+    int redirection_first_loc = -1;
+    int redirection_happend = 0;
+    int status = EXIT_SUCCESS;
+
+    for(int i= 0; local_argv[i] != NULL; i++)
+    {
+        if (fd  == -1)
+        {
+            redirection_first_loc = i;
+        }
+
+        if(strcmp(local_argv[i], INPUT_REDIRECTION) == 0)
+        {
+            if ((fd = open(local_argv[i+1], O_RDONLY, S_IRUSR|S_IRGRP|S_IROTH)) < 0)
+            {
+                printf("Error input redirection failed to open the file %s\n", local_argv[i+1]);
+                status = EXIT_FAILURE;
+                goto func_error;
+            }
+            dup2(fd,STDIN_FILENO);
+            close(fd);
+            redirection_happend = 1;
+        }
+        else if(strcmp(local_argv[i], OUTPUT_REDIRECTION) == 0)
+        {
+            if ((fd = open(local_argv[i+1], O_WRONLY| O_CREAT | O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0)
+            {
+                printf("Error output redirection failed to open the file %s\n", local_argv[i+1]);
+                status = EXIT_FAILURE;
+                goto func_error;
+            }
+            dup2(fd,STDOUT_FILENO);
+            close(fd);
+            redirection_happend = 1;
+        }
+        else if(strcmp(local_argv[i], ERROR_REDIRECTION) == 0)
+        {
+            if ((fd = open(local_argv[i+1], O_WRONLY| O_CREAT | O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH)) < 0)
+            {
+                printf("Error output redirection failed to open the file %s\n", local_argv[i+1]);
+                status = EXIT_FAILURE;
+                goto func_error;
+            }
+            dup2(fd,STDERR_FILENO);
+            close(fd);
+            redirection_happend = 1;
+        }
+    }
+
+    if (redirection_happend)
+    {
+        int i;
+        /* Remove all the argvs after it */
+        for (i = redirection_first_loc + 1; local_argv[i] != NULL ; i++) // +1 in the i initialization as this place will be the place of the null 
+        {
+            free(local_argv[i]);
+        }
+        free(local_argv[i]); // free the NULL location
+        local_argv[redirection_first_loc] = NULL;
+    }
+
+    func_error:
+    if (status == EXIT_FAILURE)
+    {
+        clean_local_argv(local_argv);
+    }
+
+    return status;
+}
+#endif // MICRO SHELL
 
 static char** wait_parse_inputs()
 {
@@ -193,7 +296,13 @@ static char** wait_parse_inputs()
         printf("Unexpected failure in tokenize\n");
         exit(-1);
     }
-
+#if (shell_flavor == MICRO_SHELL)
+    /* Handle redirections */
+    if (EXIT_SUCCESS != redirection_handler(local_argv))
+    {
+        local_argv = NULL;
+    }
+#endif // MICRO SHELL
     return local_argv;
 }
 
@@ -230,16 +339,6 @@ for (int i = 0; i < end_index_sprtd_cmds; i++)
 #endif /*shell_flavor*/
 
     return EXIT_FAILURE;
-}
-
-
-static void clean_local_argv(char** local_argv)
-{
-    for (int i = 0; local_argv[i] != NULL; i++) 
-    {
-        free(local_argv[i]);
-    }
-    free(local_argv);
 }
 
 static void clean_local_env_vars(void)
@@ -308,7 +407,7 @@ static void handle_shell_preproc_for_non_special_commands(char** local_argv, con
         
 #if (shell_flavor < NANO_SHELL)
         /* Expand the passed variable iff $ exists this means that the variable isn't a local variable*/
-        printf("%s echo hit  %ld\n",local_argv[cmd_indx + 1], cmd_indx);
+        //printf("%s echo hit  %d\n",local_argv[cmd_indx + 1], cmd_indx);
         if ((env_var_exp = getenv(&local_argv[cmd_indx + 1][1])) == NULL)
         {
             return;
@@ -478,6 +577,10 @@ static void parent_shell_handler()
     /* prompt and tokenization */
     print_prompt();
     local_argv = wait_parse_inputs();
+    if (local_argv == NULL)
+    {
+        goto func_exit;
+    }
     if (local_argv[0] == NULL)
     {
         goto clean_up;
@@ -528,16 +631,30 @@ static void parent_shell_handler()
 
 clean_up:
     clean_local_argv(local_argv);
-    
+func_exit:
 }
 
 int main(int argc, char ** argv)
 {
-    
+#if shell_flavor == MICRO_SHELL
+    stdin_backup  = dup(STDIN_FILENO);
+    stdout_backup = dup(STDOUT_FILENO);
+    stdout_backup = dup(STDERR_FILENO);
+#endif // MICRO
     while(1)
     {
         parent_shell_handler();
+#if shell_flavor == MICRO_SHELL
+        /* restore the stdin/ stdout / stderr*/
+        dup2(stdin_backup , STDIN_FILENO);
+        dup2(stdout_backup, STDOUT_FILENO);
+        dup2(stderr_backup, STDERR_FILENO);
+#endif //MICRO_SHELL
     }
-
+#if shell_flavor == MICRO_SHELL
+    close(stdin_backup);
+    close(stdout_backup);
+    close(stderr_backup);
+#endif //MICRO_SHELL
     exit(EXIT_SUCCESS);
 }
